@@ -135,6 +135,16 @@ def save_yaral_rule(yaral_content: str, filename: str) -> bool:
         st.error(f"Error saving YARAL rule: {str(e)}")
         return False
 
+def clean_yaral_content(yaral_content: str) -> str:
+    """Clean the YARAL content by removing markdown code blocks and unnecessary comments."""
+    # Remove markdown code blocks if present
+    content = yaral_content.replace('```yaral', '').replace('```', '')
+    
+    # Remove leading/trailing whitespace
+    content = content.strip()
+    
+    return content
+
 def convert_to_yaral(client: GeminiRegionClient, rule_content: dict) -> str:
     # Load example YARAL rules
     yaral_examples = load_yaral_examples()
@@ -167,7 +177,9 @@ def convert_to_yaral(client: GeminiRegionClient, rule_content: dict) -> str:
     - condition section at the end"""
     
     try:
-        return client.generate_content(prompt)
+        yaral_content = client.generate_content(prompt)
+        # Clean the content before returning
+        return clean_yaral_content(yaral_content)
     except Exception as e:
         st.error(f"Error converting rule: {str(e)}")
         return None
@@ -275,12 +287,13 @@ def main():
     with col2:
         st.header("Output")
         if "yaral_rule" in st.session_state and st.session_state.yaral_rule:
+            # Display the rule with code formatting
             st.code(st.session_state.yaral_rule, language="python")
             
-            # Add download button
+            # Download button with cleaned content
             st.download_button(
                 label="Download YARAL Rule",
-                data=st.session_state.yaral_rule,
+                data=st.session_state.yaral_rule,  # Already cleaned in convert_to_yaral
                 file_name="converted_rule.yaral",
                 mime="text/plain"
             )
