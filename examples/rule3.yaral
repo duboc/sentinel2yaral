@@ -1,0 +1,26 @@
+rule data_exfiltration_cloud_storage
+{
+    meta:
+        description = "Detects potential data exfiltration to unauthorized external cloud storage services (e.g., personal Dropbox, Google Drive)"
+        author = "Security Analyst"
+        rule_id = "example_rule_3"
+        severity = "High"
+
+    events:
+        $file_upload.metadata.event_type = "FILE_UPLOAD" // Or similar event type for cloud storage uploads
+        $file_upload.target.application_category = "Cloud Storage"
+        $file_upload.target.url = $upload_url
+        $file_upload.principal.user.userid = $user_id
+
+    match:
+        not $upload_url regex /(your_company_approved_cloud_storage_domains)/ nocase // Replace with your approved domains
+
+    outcome:
+        $risk_score = 80
+        $exfiltration_url = $upload_url
+        $user = $user_id
+        $filename = $file_upload.src.file.name // Assuming src.file.name is available
+
+    condition:
+        $file_upload
+}

@@ -1,0 +1,89 @@
+```yaral
+rule sharepoint_file_operation_unseen_user_agent
+{
+    meta:
+        description = "Identifies anomalies if the number of documents uploaded or downloaded from device(s) associated with a previously unseen user agent exceeds a threshold (default is 5) and deviation (default is 25)."
+        author = "Sentinel Translator"
+        rule_id = "5dd76a87-9f87-4576-bab3-268b0e2b338b"
+        severity = "Medium"
+
+    events:
+        $office_activity.metadata.event_type = "OFFICE_ACTIVITY"  // Chronicle equivalent of OfficeActivity
+        $office_activity.principal.user.user_id = $user_id
+        $office_activity.principal.user_agent.original = $user_agent
+        $office_activity.target.url = $site_url
+        $office_activity.data.operation = $operation
+        $office_activity.metadata.event_timestamp = $event_timestamp
+
+    global:
+        $threshold = 5
+        $starttime = now() - 14d
+        $endtime = now() - 1d
+        $szOperations = ["FileDownloaded", "FileUploaded"]
+
+
+    intermediate:
+        $base_events = filter $office_activity where ($event_timestamp between $starttime and $endtime) and ($operation in $szOperations) and ($user_agent != "")
+
+        $frequent_ua = groupby $base_events by $user_agent | filter count($base_events) >= $threshold | foreach $frequent_ua_group do $frequent_ua_group.key.user_agent
+
+        $user_baseline = groupby $base_events by $user_id, $operation, $site_url | foreach $user_baseline_group do [
+            $user_baseline_group.key.user_id,
+            $user_baseline_group.key.operation,
+            $user_baseline_group.key.site_url,
+            avg(count($base_events))
+        ]
+
+        $recent_activity = filter $office_activity where ($event_timestamp > $endtime) and ($operation in $szOperations) and ($user_agent != "") and ($user_agent in $frequent_ua)
+        $recent_activity_grouped = groupby $recent_activity by $user_id, $operation, $site_url | foreach $recent_activity_group do [
+            $recent_activity_group.key.user_id,
+            $recent_activity_group.key.operation,
+            $recent_activity_group.key.site_url,
+            count($recent_activity)
+        ]
+
+        $user_behavior_analysis = join $user_baseline, $recent_activity_grouped by $user_id, $operation, $site_url | foreach $joined_event do [
+            $joined_event.left.user_id,
+            $joined_event.left.operation,
+            $joined_event.left.site_url,
+            $joined_event.left.avg,
+            $joined_event.right.count
+        ] | foreach $analysis_result do [
+            $analysis_result.user_id,
+            $analysis_result.operation,
+            $analysis_result.site_url,
+            abs($analysis_result.count - $analysis_result.avg) / $analysis_result.avg
+        ]
+
+
+    match:
+        $deviation > 25
+
+    outcome:
+        $risk_score = 50 // Adjust as needed
+        $user_id = $user_id
+        $user_agent = $user_agent
+        $user_agent_seen_count = $user_agent_seen_count
+        $site_url = $site_url
+        $deviation = $deviation
+
+
+    condition:
+        $user_behavior_analysis and $deviation > 25
+}
+```
+
+
+Key Changes and Considerations:
+
+* **Data Sources:**  The rule now uses `OFFICE_ACTIVITY` as the Chronicle equivalent of the Sentinel `OfficeActivity` data type.  You may need to adjust this based on your Chronicle data ingestion configuration.
+* **Field Mappings:** The rule uses Chronicle's standardized field names (e.g., `principal.user.user_id`, `target.url`).  Refer to the Chronicle data model documentation for precise field names.
+* **Time Windowing:** The Sentinel query uses `ago()` for time calculations.  The YARAL rule uses `now()` and duration literals (e.g., `14d`, `1d`) for similar functionality.
+* **Threshold and Deviation:** The threshold (5) and deviation (25) values are preserved.
+* **String Matching:**  The `=~` operator in Sentinel is replaced with equality or `in` checks in YARAL, depending on the context.
+* **Aggregation and Joining:** The Sentinel KQL aggregation and join operations are translated into YARAL's `groupby` and `join` operations. The logic is broken down into smaller, more manageable intermediate steps.
+* **User Agent Filtering:** The logic for filtering frequent user agents and calculating deviations is implemented using YARAL's filtering and grouping capabilities.
+* **Outcome:** The `outcome` section includes relevant information for analysis.
+
+
+This YARAL rule aims to replicate the core logic of the Sentinel rule.  Thorough testing and validation are crucial after conversion to ensure accurate detection in your Chronicle environment.  You might need to adjust field names, event types, or thresholds based on your specific Chronicle setup and the nature of your data.

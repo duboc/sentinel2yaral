@@ -1,0 +1,24 @@
+rule dns_tunneling_query_length
+{
+    meta:
+        description = "Detects potential DNS tunneling based on unusually long DNS query names (simplified example)"
+        author = "Security Analyst"
+        rule_id = "example_rule_5"
+        severity = "Medium"
+
+    events:
+        $dns_query.metadata.event_type = "NETWORK_DNS_QUERY" // Or similar DNS query event
+        $dns_query.network.dns.query_name = $query_name
+
+    match:
+        length($query_name) > 150 // Check if query name length exceeds 150 characters (adjust threshold)
+
+    outcome:
+        $risk_score = 30
+        $suspicious_query = $query_name
+        $query_length = length($query_name)
+        $source_ip = $dns_query.principal.ip // If source IP is available in DNS query event
+
+    condition:
+        $dns_query
+}

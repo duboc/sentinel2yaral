@@ -1,0 +1,24 @@
+rule suspicious_process_from_temp
+{
+    meta:
+        description = "Detects processes executed from common temporary directories (e.g., /tmp, C:\Windows\Temp)"
+        author = "Security Analyst"
+        rule_id = "example_rule_1"
+        severity = "Medium"
+
+    events:
+        $process.metadata.event_type = "PROCESS_EXECUTION"
+        $process.principal.process.file.path = $process_path
+
+    match:
+        $process_path nocase in ("/tmp/%", "/var/tmp/%", "C:\Windows\Temp\%", "C:\Users\%\AppData\Local\Temp\%")
+
+    outcome:
+        $risk_score = 40
+        $suspicious_path = $process_path
+        $process_name = $process.principal.process.file.name
+        $principal_user = $process.principal.user.userid
+
+    condition:
+        $process
+}

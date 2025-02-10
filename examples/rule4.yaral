@@ -1,0 +1,25 @@
+rule brute_force_login_attempt
+{
+    meta:
+        description = "Detects potential brute force login attempts based on multiple failed login events from the same source IP to the same user account within a short time frame."
+        author = "Security Analyst"
+        rule_id = "example_rule_4"
+        severity = "High"
+
+    events:
+        $login_fail.metadata.event_type = "USER_LOGIN_FAILURE" // Or similar failure event
+        $login_fail.principal.ip = $source_ip
+        $login_fail.target.user.userid = $target_user
+
+    match:
+        $source_ip by $target_user over 1m count(login_fail) >= 5 // 5 or more failed logins in 1 minute
+
+    outcome:
+        $risk_score = 60
+        $source_ip_address = $source_ip
+        $target_username = $target_user
+        $failure_count = count(login_fail)
+
+    condition:
+        $login_fail
+}

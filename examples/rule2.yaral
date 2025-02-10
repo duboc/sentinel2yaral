@@ -1,0 +1,25 @@
+rule phishing_link_click_simplified
+{
+    meta:
+        description = "Detects clicks on URLs that match known phishing patterns (simplified example)"
+        author = "Security Analyst"
+        rule_id = "example_rule_2"
+        severity = "High"
+
+    events:
+        $web_event.metadata.event_type = "NETWORK_HTTP" // Assuming a web event type
+        $web_event.network.http.url = $clicked_url
+        $web_event.principal.user.userid = $user_id
+
+    match:
+        $clicked_url regex /(paypal|bankofamerica|wellsfargo)\.examplephish\.com/ nocase
+
+    outcome:
+        $risk_score = 70
+        $phishing_url = $clicked_url
+        $user = $user_id
+        $timestamp = $web_event.metadata.event_timestamp
+
+    condition:
+        $web_event
+}
