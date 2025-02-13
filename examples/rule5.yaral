@@ -1,24 +1,49 @@
-rule dns_tunneling_query_length
-{
-    meta:
-        description = "Detects potential DNS tunneling based on unusually long DNS query names (simplified example)"
-        author = "Security Analyst"
-        rule_id = "example_rule_5"
-        severity = "Medium"
+rule Sign_ins_from_IPs_that_attempt_sign_ins_to_disabled_accounts {
+
+    meta:       
+        author = "Testing"
+        mitre_attack_tactic = "TA0001,TA0003"
+        mitre_attack_technique = "1078,1098"
+
+        event_name = "Sign-ins from IPs that attempt sign-ins to disabled accounts"
+        description = "Identifies IPs with failed attempts to sign in to one or more disabled accounts signed in successfully to another account"
+        severity = "medium"
+        handling_type = "manual"
+        category_resilient = "Autenticacao:Comportamento anomalo Contas/Usuarios"
+        category = "Authentication"
+        subcategory = "comportamentoanomalocontas"
 
     events:
-        $dns_query.metadata.event_type = "NETWORK_DNS_QUERY" // Or similar DNS query event
-        $dns_query.network.dns.query_name = $query_name
+        (
+            $event.metadata.log_type = "AZURE_AD"
+            or $event.metadata.log_type = "AZURE_RESOURCE_LOGS"
+        )
+
+        (
+            $event.additional.fields["error_number"] = "50057"
+            or $event.additional.fields["resultType"] = "50057"
+            or any $event.security_result.rule_id = "50057"
+        )
+
+        //-------------------------------------------------------------------------------------------------
+
+        $event2.metadata.log_type = "AZURE_AD"
+
+        (
+            $event2.additional.fields["error_number"] = "0"
+            or $event2.additional.fields["resultType"] = "0"
+            or any $event2.security_result.rule_id = "0"
+            or $event2.security_result.summary = "Successful login occurred"
+        )
+
+        $principal_ip = $event.principal.ip[0]
+        $principal_ip = $event2.principal.ip[0]
 
     match:
-        length($query_name) > 150 // Check if query name length exceeds 150 characters (adjust threshold)
+        $principal_ip over 24h
 
     outcome:
-        $risk_score = 30
-        $suspicious_query = $query_name
-        $query_length = length($query_name)
-        $source_ip = $dns_query.principal.ip // If source IP is available in DNS query event
-
+               
     condition:
-        $dns_query
+        $event and #event2 < 100
 }

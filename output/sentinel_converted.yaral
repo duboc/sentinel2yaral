@@ -1,0 +1,74 @@
+rule SharePointFileOperation_via_devices_with_previously_unseen_user_agents {
+
+    meta:
+        author = "Gemini"
+        event_name = "SharePoint File Operation via Devices with Previously Unseen User Agents"
+        description = "Identifies anomalies if the number of documents uploaded or downloaded from device(s) associated with a previously unseen user agent exceeds a threshold (default is 5) and deviation (default is 25)."
+        severity = "Medium"
+        mitre_attack_tactic = "TA0010"
+        mitre_attack_technique = "T1030"
+
+    events:
+        // Map OfficeActivity to RESOURCE_ACCESS common event type
+        $resource_access.metadata.log_type = "OFFICE_365"
+
+        // Filter for SharePoint file operations (FileDownloaded, FileUploaded)
+        $resource_access.resource.name = "SharePointFileOperation"
+        $resource_access.operation = "FileDownloaded" or $resource_access.operation = "FileUploaded"
+
+        // Check for UserAgent
+        $resource_access.user_agent.original_user_agent != null
+
+        // Extract relevant fields
+        $user_id = $resource_access.principal.user.userid
+        $client_ip = $resource_access.principal.ip
+        $site_url = $resource_access.resource.url
+
+        // Define threshold and deviation (These should ideally be configurable via rule parameters)
+        $threshold = 5
+        $deviation_threshold = 25
+
+        // Define time windows for historical and recent activity
+        $historical_start = 14d
+        $historical_end = 1d
+        $recent_end = 1d
+
+        // --- Subrule to identify frequent user agents in historical data ---
+        $frequent_ua.metadata.log_type = "OFFICE_365"
+        $frequent_ua.resource.name = "SharePointFileOperation"
+        $frequent_ua.operation = "FileDownloaded" or $frequent_ua.operation = "FileUploaded"
+        $frequent_ua.user_agent.original_user_agent != null
+        $frequent_ua.time between (now() - $historical_start) and (now() - $historical_end)
+
+        // --- Subrule to analyze recent activity ---
+        $recent_activity.metadata.log_type = "OFFICE_365"
+        $recent_activity.resource.name = "SharePointFileOperation"
+        $recent_activity.operation = "FileDownloaded" or $recent_activity.operation = "FileUploaded"
+        $recent_activity.user_agent.original_user_agent != null
+        $recent_activity.time > (now() - $recent_end)
+
+    match:
+        // Match events based on user, operation, and site URL
+        $user_id over 1d
+        $client_ip over 1d
+        $site_url over 1d
+
+    outcome:
+        // Placeholder for risk scoring and output variables.  This would require more complex aggregation
+        // and statistical analysis which is difficult to represent directly in YARA-L.  Consider using
+        // Chronicle's built-in anomaly detection capabilities in conjunction with this rule.
+        // Example:
+        // $risk_score = 50  // Based on exceeding threshold and deviation
+        // $output_variables = { "user_id": $user_id, "client_ip": $client_ip, "site_url": $site_url }
+
+    condition:
+        // Check if the user agent is in the list of frequent user agents
+        $resource_access and not $frequent_ua and $recent_activity
+        // Add a count check to ensure the number of operations exceeds the threshold
+        // and the deviation exceeds the deviation threshold. This requires aggregation
+        // which is not directly supported in YARA-L.  This logic would need to be implemented
+        // outside of the rule (e.g., using Chronicle's aggregation capabilities or a separate
+        // processing step).
+        // Example:
+        // count($resource_access) > $threshold and $deviation > $deviation_threshold
+}

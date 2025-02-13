@@ -1,25 +1,33 @@
-rule brute_force_login_attempt
-{
-    meta:
-        description = "Detects potential brute force login attempts based on multiple failed login events from the same source IP to the same user account within a short time frame."
-        author = "Security Analyst"
-        rule_id = "example_rule_4"
-        severity = "High"
+rule Incidents_based_on_Defender_for_Cloud_Alerts {
+
+    meta:       
+        author = "Testing"
+        mitre_attack_tactic = ""
+        mitre_attack_technique = ""
+
+        event_name = "Incidents based on Defender for Cloud Alerts" //rever
+        description = "Cria incidentes na fila do Sentinel a partir de alertas do Microsoft Defender for Cloud." //rever
+        severity = "high"
+        handling_type = "manual"
+        category_resilient = "Autenticacao:Comportamento anomalo Contas/Usuarios" //rever
+        category = "Authentication" //rever
+        subcategory = "comportamentoanomalocontas" //rever
 
     events:
-        $login_fail.metadata.event_type = "USER_LOGIN_FAILURE" // Or similar failure event
-        $login_fail.principal.ip = $source_ip
-        $login_fail.target.user.userid = $target_user
+        (
+            $event.metadata.log_type = "MICROSOFT_GRAPH_ALERT"
+            or $event.metadata.log_type = "MICROSOFT_DEFENDER_ENDPOINT"
+            or $event.metadata.log_type = "OFFICE_365"
+        )
 
-    match:
-        $source_ip by $target_user over 1m count(login_fail) >= 5 // 5 or more failed logins in 1 minute
+        (
+            any $event.security_result.rule_name = /A possible vulnerability to SQL Injection|Fileless attack tollkit detected|Unusual user password reset in your virtual machine/ nocase
+            or any $event.security_result.threat_name = /A possible vulnerability to SQL Injection|Fileless attack tollkit detected|Unusual user password reset in your virtual machine/ nocase
+            or any $event.security_result.summary = /A possible vulnerability to SQL Injection|Fileless attack tollkit detected|Unusual user password reset in your virtual machine/ nocase
+        )
 
     outcome:
-        $risk_score = 60
-        $source_ip_address = $source_ip
-        $target_username = $target_user
-        $failure_count = count(login_fail)
-
+        
     condition:
-        $login_fail
+        $event
 }

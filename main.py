@@ -124,10 +124,17 @@ def load_example_rules():
     return rules
 
 def save_yaral_rule(yaral_content: str, filename: str) -> bool:
-    """Save the YARAL rule to a file in the examples directory."""
+    """Save the YARAL rule to a file in the output directory."""
     try:
-        output_filename = os.path.splitext(filename)[0] + '.yaral'
-        output_path = os.path.join('examples', output_filename)
+        # Create output directory if it doesn't exist
+        output_dir = 'output'
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate output filename
+        base_name = os.path.splitext(os.path.basename(filename))[0]
+        output_filename = f"{base_name}_converted.yaral"
+        output_path = os.path.join(output_dir, output_filename)
+        
         with open(output_path, 'w') as f:
             f.write(yaral_content)
         return True
@@ -149,39 +156,168 @@ def convert_to_yaral(client: GeminiRegionClient, rule_content: dict) -> str:
     # Load example YARAL rules
     yaral_examples = load_yaral_examples()
     
-    # Create a prompt that includes examples
+    # Create a structured prompt with mapping information and guidelines
+    mapping_reference = """
+    Common Event Type Mappings:
+    - SecurityEvent (EventID 4688) → PROCESS_LAUNCH
+    - SigninLogs → USER_LOGIN
+    - CommonSecurityLog → NETWORK_CONNECTION
+    - AuditLogs → AUDIT_EVENT
+    - FileCreateEvents → FILE_CREATION
+    - OfficeActivity → RESOURCE_ACCESS
+    - AzureActivity → CLOUD_ACTIVITY
+    """
+
+    # Create examples section using ALL available YARAL examples
     examples_text = "\n\n".join([
-        f"Example {i+1}:\n```\n{example}\n```"
-        for i, example in enumerate(list(yaral_examples.values())[:3])  # Use up to 3 examples
+        f"Example - {filename}:\n```\n{content}\n```"
+        for filename, content in yaral_examples.items()
+        if filename.endswith('.yaral')  # Include all .yaral files
     ])
     
-    prompt = f"""Convert this Microsoft Sentinel detection rule to a Chronicle YARAL rule. 
-    Here are some examples of well-formatted YARAL rules:
-    
-    {examples_text}
-    
-    Here's the Sentinel rule in YAML format that needs to be converted:
-    
-    {yaml.dump(rule_content, default_flow_style=False)}
-    
-    Please convert this to a Chronicle YARAL rule format. Focus on:
-    1. Maintaining the same detection logic
-    2. Using appropriate Chronicle data sources and fields
-    3. Preserving the rule's intent and functionality
-    4. Following the same structure as the example YARAL rules above
-    - rule block with curly braces
-    - meta section with description, author, rule_id, and severity
-    - events section with event types and variable assignments
-    - match section for conditions
-    - outcome section for risk scores and output variables
-    - condition section at the end"""
-    
+    prompt = f"""Task: Convert the provided Microsoft Sentinel detection rule into a Chronicle Yara-L rule format.
+
+Input Rule Details:
+Name: {rule_content.get('name', 'Unknown')}
+Description: {rule_content.get('description', 'No description provided')}
+Severity: {rule_content.get('severity', 'Medium')}
+MITRE Tactics: {', '.join(rule_content.get('tactics', []))}
+MITRE Techniques: {', '.join(rule_content.get('techniques', []))}
+
+Original Rule Content:
+{yaml.dump(rule_content, default_flow_style=False)}
+
+{mapping_reference}
+
+Reference Examples of Well-Formatted YARAL Rules:
+{examples_text}
+
+Output Requirements:
+1. Maintain detection logic equivalence while adapting to Yara-L syntax
+2. Use appropriate Chronicle data sources and fields based on the mapping reference
+3. Preserve the rule's metadata (severity, description, tactics)
+4. Follow the same structure as the example YARAL rules:
+   - rule block with curly braces
+   - meta section with description, author, rule_id, and severity
+   - events section with event types and variable assignments
+   - match section for conditions
+   - outcome section for risk scores and output variables
+   - condition section at the end
+5. Add comments explaining any complex logic translations
+6. Include appropriate time windows and error handling
+
+The author of the rule should always be "Gemini"
+Please convert this rule to Chronicle YARAL format while maintaining its detection capabilities and following the patterns shown in the example rules."""
+
     try:
         yaral_content = client.generate_content(prompt)
         # Clean the content before returning
         return clean_yaral_content(yaral_content)
     except Exception as e:
         st.error(f"Error converting rule: {str(e)}")
+        return None
+
+def evaluate_yaral_rule(client: GeminiRegionClient, yaral_content: str) -> str:
+    """Evaluate a YARAL rule against best practices and production readiness criteria."""
+    prompt = f"""Task: Evaluate the provided Chronicle Yara-L rule against best practices and production readiness criteria.
+
+Input YARAL Rule:
+```yaral
+{yaral_content}
+```
+
+Evaluation Criteria:
+
+1. Structure and Documentation (20 points)
+- Complete metadata section (author, description, references)
+- Clear comments explaining complex logic
+- Proper indentation and formatting
+- Documentation of potential false positives
+- MITRE ATT&CK mapping accuracy
+
+2. Detection Logic (25 points)
+- Proper event type usage
+- Correct field references
+- Efficient event correlation
+- Appropriate time windows
+- Logical operator usage
+
+3. Performance Optimization (20 points)
+- Efficient use of regex patterns
+- Proper use of lookup lists
+- Optimal time window definitions
+- Resource usage consideration
+- Query optimization techniques
+
+4. Error Handling & Resilience (15 points)
+- Null value handling
+- Missing field handling
+- Edge case consideration
+- Exception handling
+- Graceful failure modes
+
+5. Production Readiness (20 points)
+- False positive reduction techniques
+- Alert context quality
+- Action guidance clarity
+- Integration with existing tools
+- Scalability considerations
+
+Please provide a detailed evaluation following this format:
+
+Rule Evaluation Report
+
+Rule Name: [Extract from rule]
+
+Overall Score: XX/100
+
+Category Breakdown:
+- Structure and Documentation: XX/20
+- Detection Logic: XX/25
+- Performance Optimization: XX/20
+- Error Handling & Resilience: XX/15
+- Production Readiness: XX/20
+
+Critical Issues:
+1. [Issue description]
+2. [Issue description]
+...
+
+Strengths:
+1. [Strength description]
+2. [Strength description]
+...
+
+Areas for Improvement:
+1. [Area description]
+   Recommendation: [Specific improvement suggestion]
+   Example:
+   ```yaral
+   // Code example
+   ```
+
+Performance Impact Analysis:
+- Resource Usage: [Low/Medium/High]
+- Scale Considerations: [Description]
+- Optimization Opportunities: [List]
+
+False Positive Analysis:
+- Potential Scenarios: [List]
+- Suggested Mitigations: [List]
+
+Implementation Recommendations:
+1. [Priority 1 change]
+2. [Priority 2 change]
+...
+
+Final Recommendations:
+[Summary of key actions needed for production deployment]"""
+
+    try:
+        evaluation = client.generate_content(prompt)
+        return evaluation
+    except Exception as e:
+        st.error(f"Error evaluating rule: {str(e)}")
         return None
 
 def setup_sidebar():
@@ -224,7 +360,8 @@ def main():
     # Setup sidebar and get LLM configuration
     llm_config = setup_sidebar()
     
-    st.title("Sentinel to YARAL Rule Converter")
+    # Create tabs
+    tab1, tab2 = st.tabs(["Rule Converter", "Example Rules"])
     
     # Initialize GeminiRegionClient
     project_id = os.getenv("GCP_PROJECT")
@@ -247,54 +384,99 @@ def main():
     
     # Load example rules
     example_rules = load_example_rules()
+    yaral_examples = load_yaral_examples()
     
-    # Create two columns
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.header("Input")
-        input_method = st.radio("Choose input method:", ["Use Example", "Upload YAML"])
+    with tab1:
+        st.title("Sentinel to YARAL Rule Converter")
+        col1, col2 = st.columns(2)
         
-        if input_method == "Use Example":
-            selected_example = st.selectbox("Select an example rule:", list(example_rules.keys()))
-            rule_content = example_rules[selected_example]
-            st.code(yaml.dump(rule_content, default_flow_style=False), language="yaml")
-        else:
-            uploaded_file = st.file_uploader("Upload a Sentinel rule YAML file", type="yaml")
-            if uploaded_file:
-                try:
-                    rule_content = yaml.safe_load(uploaded_file)
-                    st.code(yaml.dump(rule_content, default_flow_style=False), language="yaml")
-                except yaml.YAMLError as e:
-                    st.error(f"Error loading YAML file: {str(e)}")
-                    rule_content = None
-                except Exception as e:
-                    st.error(f"Unexpected error: {str(e)}")
-                    rule_content = None
-            else:
-                rule_content = None
-        
-        if st.button("Convert to YARAL"):
-            if rule_content:
-                with st.spinner("Converting rule..."):
-                    yaral_rule = convert_to_yaral(client, rule_content)
-                    if yaral_rule:
-                        st.session_state.yaral_rule = yaral_rule
-                        if input_method == "Use Example":
-                            # Save the YARAL rule alongside the example
-                            save_yaral_rule(yaral_rule, selected_example)
-    
-    with col2:
-        st.header("Output")
-        if "yaral_rule" in st.session_state and st.session_state.yaral_rule:
-            # Display the rule with code formatting
-            st.code(st.session_state.yaral_rule, language="python")
+        with col1:
+            st.header("Input")
+            input_method = st.radio("Choose input method:", ["Use Example", "Upload YAML"])
             
-            # Download button with cleaned content
+            if input_method == "Use Example":
+                selected_example = st.selectbox("Select an example rule:", list(example_rules.keys()))
+                rule_content = example_rules[selected_example]
+                st.code(yaml.dump(rule_content, default_flow_style=False), language="yaml")
+            else:
+                uploaded_file = st.file_uploader("Upload a Sentinel rule YAML file", type="yaml")
+                if uploaded_file:
+                    try:
+                        rule_content = yaml.safe_load(uploaded_file)
+                        st.code(yaml.dump(rule_content, default_flow_style=False), language="yaml")
+                    except yaml.YAMLError as e:
+                        st.error(f"Error loading YAML file: {str(e)}")
+                        rule_content = None
+                    except Exception as e:
+                        st.error(f"Unexpected error: {str(e)}")
+                        rule_content = None
+                else:
+                    rule_content = None
+            
+            if st.button("Convert to YARAL"):
+                if rule_content:
+                    with st.spinner("Converting rule..."):
+                        yaral_rule = convert_to_yaral(client, rule_content)
+                        if yaral_rule:
+                            st.session_state.yaral_rule = yaral_rule
+                            # Save the YARAL rule to output directory
+                            if save_yaral_rule(yaral_rule, 
+                                             selected_example if input_method == "Use Example" else "uploaded_rule"):
+                                st.success("Rule converted and saved to output directory!")
+        
+        with col2:
+            st.header("Output")
+            if "yaral_rule" in st.session_state and st.session_state.yaral_rule:
+                # Display the rule with code formatting
+                st.code(st.session_state.yaral_rule, language="python")
+                
+                # Generate filename for download
+                download_filename = (f"{os.path.splitext(selected_example)[0]}_converted.yaral" 
+                                  if input_method == "Use Example" 
+                                  else "converted_rule.yaral")
+                
+                # Download button with cleaned content
+                st.download_button(
+                    label="Download YARAL Rule",
+                    data=st.session_state.yaral_rule,
+                    file_name=download_filename,
+                    mime="text/plain"
+                )
+
+                # Add evaluation button
+                if st.button("Evaluate Rule"):
+                    with st.spinner("Evaluating rule..."):
+                        evaluation_result = evaluate_yaral_rule(client, st.session_state.yaral_rule)
+                        if evaluation_result:
+                            st.session_state.evaluation_result = evaluation_result
+                            st.success("Rule evaluation completed!")
+
+                # Display evaluation results if available
+                if "evaluation_result" in st.session_state:
+                    st.markdown("### Rule Evaluation")
+                    st.markdown(st.session_state.evaluation_result)
+    
+    with tab2:
+        st.title("Example YARAL Rules")
+        # Filter only rule1 to rule5 yaral files
+        rule_files = {k: v for k, v in yaral_examples.items() 
+                     if k.startswith('rule') and k.endswith('.yaral') 
+                     and k[4:-6].isdigit() and 1 <= int(k[4:-6]) <= 5}
+        
+        selected_rule = st.selectbox(
+            "Select an example YARAL rule to view:",
+            options=sorted(rule_files.keys()),
+            key="example_rule_selector"
+        )
+        
+        if selected_rule:
+            st.code(rule_files[selected_rule], language="python")
+            
+            # Add download button for the example
             st.download_button(
-                label="Download YARAL Rule",
-                data=st.session_state.yaral_rule,  # Already cleaned in convert_to_yaral
-                file_name="converted_rule.yaral",
+                label=f"Download {selected_rule}",
+                data=rule_files[selected_rule],
+                file_name=selected_rule,
                 mime="text/plain"
             )
 

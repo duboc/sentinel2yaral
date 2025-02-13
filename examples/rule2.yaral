@@ -1,25 +1,37 @@
-rule phishing_link_click_simplified
-{
-    meta:
-        description = "Detects clicks on URLs that match known phishing patterns (simplified example)"
-        author = "Security Analyst"
-        rule_id = "example_rule_2"
-        severity = "High"
+rule Azure_Defender_365_Possivel_Arquivo_com_Extensao_Suspeita {
+
+    meta:       
+        author = "Testing"
+        event_name = "Azure - Defender 365 - Possivel Arquivo com Extensao Suspeita"
+        severity = "Medium"
+        
+        description = ""
+        mitre_attack_tactic = "TA0005"
+        mitre_attack_technique = "T1036.004,t1190"
+
+        tipo_tratamento = "Manual"
+        categoria = "XXX"
 
     events:
-        $web_event.metadata.event_type = "NETWORK_HTTP" // Assuming a web event type
-        $web_event.network.http.url = $clicked_url
-        $web_event.principal.user.userid = $user_id
+        (
+            $event.metadata.log_type = "MICROSOFT_GRAPH_ALERT"
+            or $event.metadata.log_type = "MICROSOFT_DEFENDER_ENDPOINT"
+            or $event.metadata.log_type = "OFFICE_365"
+        )
+
+        (
+            any $event.security_result.rule_name = "Possivel Arquivo com Extensao Suspeita" nocase
+            or any $event.security_result.threat_name = "Possivel Arquivo com Extensao Suspeita" nocase
+            or any $event.security_result.summary = "Possivel Arquivo com Extensao Suspeita" nocase
+        )
+
+        $AlertID = $event.metadata.product_log_id
 
     match:
-        $clicked_url regex /(paypal|bankofamerica|wellsfargo)\.examplephish\.com/ nocase
+        $AlertID over 15m
 
     outcome:
-        $risk_score = 70
-        $phishing_url = $clicked_url
-        $user = $user_id
-        $timestamp = $web_event.metadata.event_timestamp
-
+        
     condition:
-        $web_event
+        $event
 }

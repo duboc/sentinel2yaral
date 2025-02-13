@@ -1,26 +1,33 @@
-rule data_exfiltration_cloud_storage
-{
-    meta:
-        description = "Detects potential data exfiltration to unauthorized external cloud storage services (e.g., personal Dropbox, Google Drive)"
-        author = "Security Analyst"
-        rule_id = "example_rule_3"
-        severity = "High"
+rule Incidents_based_on_Defender_for_Cloud_Alerts {
+
+    meta:       
+        author = "Testing"
+        mitre_attack_tactic = ""
+        mitre_attack_technique = ""
+
+        event_name = "Incidents based on Defender for Cloud Alerts" //rever
+        description = "Cria incidentes na fila do Sentinel a partir de alertas do Microsoft Defender for Cloud." //rever
+        severity = "high"
+        handling_type = "manual"
+        category_resilient = "Autenticacao:Comportamento anomalo Contas/Usuarios" //rever
+        category = "Authentication" //rever
+        subcategory = "comportamentoanomalocontas" //rever
 
     events:
-        $file_upload.metadata.event_type = "FILE_UPLOAD" // Or similar event type for cloud storage uploads
-        $file_upload.target.application_category = "Cloud Storage"
-        $file_upload.target.url = $upload_url
-        $file_upload.principal.user.userid = $user_id
+        (
+            $event.metadata.log_type = "MICROSOFT_GRAPH_ALERT"
+            or $event.metadata.log_type = "MICROSOFT_DEFENDER_ENDPOINT"
+            or $event.metadata.log_type = "OFFICE_365"
+        )
 
-    match:
-        not $upload_url regex /(your_company_approved_cloud_storage_domains)/ nocase // Replace with your approved domains
+        (
+            any $event.security_result.rule_name = /A possible vulnerability to SQL Injection|Fileless attack tollkit detected|Unusual user password reset in your virtual machine/ nocase
+            or any $event.security_result.threat_name = /A possible vulnerability to SQL Injection|Fileless attack tollkit detected|Unusual user password reset in your virtual machine/ nocase
+            or any $event.security_result.summary = /A possible vulnerability to SQL Injection|Fileless attack tollkit detected|Unusual user password reset in your virtual machine/ nocase
+        )
 
     outcome:
-        $risk_score = 80
-        $exfiltration_url = $upload_url
-        $user = $user_id
-        $filename = $file_upload.src.file.name // Assuming src.file.name is available
-
+        
     condition:
-        $file_upload
+        $event
 }
